@@ -54,7 +54,7 @@ assert_eq!(
 ## The lists
 
 The lists are `domain::KNOWN_TIME_ZONES`, `KNOWN_LOCALES` and `KNOWN_TERMINAL_TYPES`. They are
-short on purpose. They are not the full IANA, glibc or terminfo databases, and compiling those in
+short on purpose. They are not the full Internet Assigned Numbers Authority (IANA), glibc or terminfo databases, and compiling those in
 would be a dependency decision. A constant assertion fails the build when a member outgrows its
 field.
 
