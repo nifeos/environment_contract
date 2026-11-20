@@ -8,7 +8,7 @@
 
 //! # BUGS
 //!
-//! - The domains are short, not the IANA, glibc or terminfo lists, which would be a
+//! - The domains are short, not the Internet Assigned Numbers Authority (IANA), glibc or terminfo lists, which would be a
 //!   dependency decision. They grow on demand.
 //!   `KNOWN_LOCALES` spells the codeset `UTF-8`, as glibc's `LANG` does, while `locale -a` prints
 //!   `utf8`; nobody has verified whether `setlocale` normalizes the two.
@@ -52,7 +52,7 @@ pub mod domain {
         "Pacific/Auckland",
     ];
 
-    /// A non-exhaustive but real subset of POSIX/glibc locale identifiers.
+    /// A non-exhaustive but real subset of Portable Operating System Interface (POSIX) and glibc locale identifiers.
     #[doc(alias = "LANG")]
     pub const KNOWN_LOCALES: &[&str] = &[
         "C",
@@ -580,8 +580,8 @@ mod tests {
     }
 
     /// A key never declared reads back absent, distinct from an empty string: this is the
-    /// property that makes a page carrying only `TZ` legible as "no LANG was granted" rather
-    /// than "LANG was granted the empty string".
+    /// property that makes a page carrying only `TZ` legible as "no `LANG` was granted" rather
+    /// than "`LANG` was granted the empty string".
     #[test]
     fn an_undeclared_key_reads_as_absent_not_empty() {
         let bytes = PageBuilder::new().time_zone("UTC").unwrap().build();
