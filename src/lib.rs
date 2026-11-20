@@ -580,8 +580,8 @@ mod tests {
     }
 
     /// A key never declared reads back absent, distinct from an empty string: this is the
-    /// property that makes a page carrying only `TZ` legible as "no LANG was granted" rather
-    /// than "LANG was granted the empty string".
+    /// property that makes a page carrying only `TZ` legible as "no `LANG` was granted" rather
+    /// than "`LANG` was granted the empty string".
     #[test]
     fn an_undeclared_key_reads_as_absent_not_empty() {
         let bytes = PageBuilder::new().time_zone("UTC").unwrap().build();
