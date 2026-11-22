@@ -350,7 +350,13 @@ fn member_on_page(
     let bytes = field_bytes(page, length_offset, value_offset, maximum_bytes)?;
     list.iter()
         .copied()
-        .find(|member| member.as_bytes() == bytes)
+        .find(|member| holds_exactly(bytes, member))
+}
+
+/// Whether `bytes` are exactly `member`'s bytes. The comparison runs over `member`'s length, which
+/// the list fixes, and never over a length the page supplies.
+fn holds_exactly(bytes: &[u8], member: &str) -> bool {
+    bytes.len() == member.len() && bytes.get(..member.len()) == Some(member.as_bytes())
 }
 
 /// **The inert-configuration page, read from bytes the caller already holds.** The safe reader: a

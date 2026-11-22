@@ -67,17 +67,22 @@ field.
 
 ## What is proven
 
-Three Kani harnesses in `src/verification.rs` prove the reader and the builder. Each has a
-falsification patch in `falsifications/` that turns it red.
+Two Kani harnesses in `src/verification.rs` prove the reader. Each has a falsification patch in
+`falsifications/` that turns it red.
 
 | Harness | Property | Falsification patch |
 |---|---|---|
 | `verification::field_bytes_never_panics_for_any_length_byte` | a length byte past its field reads as absent and never panics, including a length byte of 255 on the last field | `verification.field_bytes_never_panics_for_any_length_byte.patch` |
-| `verification::any_members_round_trip` | for any one member of each list, the built page reads back as those three members | `verification.any_members_round_trip.patch` |
 | `verification::an_accessor_answers_only_the_member_its_field_holds` | for any page at all, an accessor answers `None` or a member of its list, and a member only when the page carries the magic and the field holds exactly that member | `verification.an_accessor_answers_only_the_member_its_field_holds.patch` |
 
-The reader matches a field's bytes against the list rather than decoding them as UTF-8, so no
-harness runs a symbolic UTF-8 scan.
+The reader compares a field's bytes with each member over the member's own length, rather than
+decoding them as UTF-8, so the second harness takes a fully symbolic page. It ran in about six
+minutes and 2.2 GB of memory on a shared 80-core host.
+
+That a built page reads back as the members it was given is a host test,
+`every_member_round_trips_through_the_safe_reader`. The lists are finite, and the test writes and
+reads every member of every list, so it covers every input. A Kani harness over a symbolic member
+did not finish in under seven minutes, and adds nothing the exhaustive test lacks.
 
 ## Building and testing
 
@@ -100,8 +105,8 @@ cargo kani
 ```
 
 A passing run prints warnings that mean nothing, among them `use of an unstable feature` for
-`register_tool`. The answer is the last line, `Complete - 3 successfully verified harnesses, 0
-failures, 3 total.`
+`register_tool`. The answer is the last line, `Complete - 2 successfully verified harnesses, 0
+failures, 2 total.`
 
 ### Running a falsification patch
 
@@ -114,7 +119,7 @@ cargo kani --harness verification::field_bytes_never_panics_for_any_length_byte 
 patch -R -p1 --no-backup-if-mismatch < falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch
 ```
 
-The other two follow the same pattern with their own names. The failing run prints
+The other follows the same pattern with its own name. The failing run prints
 `VERIFICATION:- FAILED` and `cargo kani` exits 1.
 
 ## Using it

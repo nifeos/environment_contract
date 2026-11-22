@@ -1,16 +1,10 @@
-//! **Machine-checked proofs (Kani) of the inert-configuration page**: the reader never panics,
-//! whatever the page holds; it answers only a member of a key's list, and only the member the field
-//! holds; and every page the builder writes reads back as the members it was given. Behind
-//! `#[cfg(kani)]`, so only `cargo kani` compiles them.
+//! **Machine-checked proofs (Kani) of the inert-configuration page's reader**: it never panics,
+//! whatever the page holds, and it answers only a member of a key's list, and only the member the
+//! field holds. That every built page reads back as the members it was given is a host test,
+//! `every_member_round_trips_through_the_safe_reader`, which tries every member of every finite
+//! list. Behind `#[cfg(kani)]`, so only `cargo kani` compiles them.
 
 use super::*;
-
-/// Any one member of `list`, chosen by the model checker.
-fn any_member(list: &'static [&'static str]) -> &'static str {
-    let index: usize = kani::any();
-    kani::assume(index < list.len());
-    list[index]
-}
 
 /// Falsification: replayable `falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch`
 /// **`field_bytes`, which every accessor reads through, never panics for any length byte, and a
@@ -32,29 +26,6 @@ fn field_bytes_never_panics_for_any_length_byte() {
     if usize::from(length) > MAXIMUM_TERMINAL_TYPE_BYTES {
         assert!(read.is_none());
     }
-}
-
-/// Falsification: replayable `falsifications/verification.any_members_round_trip.patch`
-/// **For any one member of each list, the page `PageBuilder` builds reads back as those three
-/// members.**
-#[kani::proof]
-#[kani::unwind(42)]
-fn any_members_round_trip() {
-    let time_zone = any_member(domain::KNOWN_TIME_ZONES);
-    let locale = any_member(domain::KNOWN_LOCALES);
-    let terminal_type = any_member(domain::KNOWN_TERMINAL_TYPES);
-    let page = PageBuilder::new()
-        .time_zone(time_zone)
-        .unwrap()
-        .locale(locale)
-        .unwrap()
-        .terminal_type(terminal_type)
-        .unwrap()
-        .build();
-    let read = ConfigurationView::new(&page);
-    assert_eq!(read.time_zone(), Some(time_zone));
-    assert_eq!(read.locale(), Some(locale));
-    assert_eq!(read.terminal_type(), Some(terminal_type));
 }
 
 /// Whether the page's field holds exactly `value`'s bytes: its length byte is the value's length,

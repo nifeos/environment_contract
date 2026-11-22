@@ -1,21 +1,21 @@
 Falsifies `environment_contract::verification::an_accessor_answers_only_the_member_its_field_holds`.
 
-The defect: `member_on_page` compares only the length of the field with each member's, so a field
+The defect: `holds_exactly` compares only the field's length with each member's, so a field
 holding `UTX` answers `UTC`, a member the page does not carry.
 
-Expected to fail: the harness's `assert!(field_holds(...))` for the time zone, since the answer's
-bytes differ from the field's.
+Expected to fail: the harness's `assert!(field_holds(...))`, since the answer's bytes differ from
+the field's.
 
 diff --git a/src/lib.rs b/src/lib.rs
-index fd31da7..f896801 100644
+index afa361c..934bd7c 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -350,7 +350,7 @@ fn member_on_page(
-     let bytes = field_bytes(page, length_offset, value_offset, maximum_bytes)?;
-     list.iter()
-         .copied()
--        .find(|member| member.as_bytes() == bytes)
-+        .find(|member| member.len() == bytes.len())
+@@ -356,7 +356,7 @@ fn member_on_page(
+ /// Whether `bytes` are exactly `member`'s bytes. The comparison runs over `member`'s length, which
+ /// the list fixes, and never over a length the page supplies.
+ fn holds_exactly(bytes: &[u8], member: &str) -> bool {
+-    bytes.len() == member.len() && bytes.get(..member.len()) == Some(member.as_bytes())
++    bytes.len() == member.len()
  }
  
  /// **The inert-configuration page, read from bytes the caller already holds.** The safe reader: a
