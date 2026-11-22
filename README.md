@@ -77,7 +77,7 @@ Two Kani harnesses in `src/verification.rs` prove the reader. Each has a falsifi
 
 The reader compares a field's bytes with each member over the member's own length, rather than
 decoding them as UTF-8, so the second harness takes a fully symbolic page. It ran in about six
-minutes and 2.2 GB of memory on a shared 80-core host.
+minutes and 2.2 gigabytes of memory on a shared 80-core host.
 
 That a built page reads back as the members it was given is a host test,
 `every_member_round_trips_through_the_safe_reader`. The lists are finite, and the test writes and
