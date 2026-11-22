@@ -1,0 +1,21 @@
+Falsifies `environment_contract::verification::an_accessor_answers_only_the_member_its_field_holds`.
+
+The defect: `holds_exactly` compares only the field's length with each member's, so a field
+holding `UTX` answers `UTC`, a member the page does not carry.
+
+Expected to fail: the harness's `assert!(field_holds(...))`, since the answer's bytes differ from
+the field's.
+
+diff --git a/src/lib.rs b/src/lib.rs
+index afa361c..934bd7c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -356,7 +356,7 @@ fn member_on_page(
+ /// Whether `bytes` are exactly `member`'s bytes. The comparison runs over `member`'s length, which
+ /// the list fixes, and never over a length the page supplies.
+ fn holds_exactly(bytes: &[u8], member: &str) -> bool {
+-    bytes.len() == member.len() && bytes.get(..member.len()) == Some(member.as_bytes())
++    bytes.len() == member.len()
+ }
+ 
+ /// **The inert-configuration page, read from bytes the caller already holds.** The safe reader: a

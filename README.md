@@ -22,16 +22,19 @@ of `TZ`, `LANG` and `TERM` takes one length byte and a fixed field of 40, 24 and
 - Write with `PageBuilder`. Each setter (`time_zone`, `locale`, `terminal_type`) returns
   `Err(Refused)` for a value outside its list. `build` returns the page's bytes. A key never set
   stays zero.
-- Read with `ConfigurationPage`. `ConfigurationPage::new` is `unsafe` because it takes a raw
-  address. Each accessor returns `None` for a zeroed or foreign frame, for a key never set, for a
-  length byte past its field and for a value outside its list. No input makes it panic.
+- Read with `ConfigurationView`, which borrows the page's bytes and is safe. A reader that holds
+  only the address of a mapped page uses `ConfigurationPage`, whose `new` is `unsafe` because it
+  takes a raw address, and which reads exactly as `ConfigurationView` does. Each accessor returns
+  `None` for a zeroed or foreign frame, for a key never set, for a length byte past its field and
+  for a value outside its list. Otherwise it returns the list's own string, never bytes borrowed
+  from the page. No input makes it panic.
 - `INTERFACE_ID` is 13, `VERSION` is 1 and `MAGIC` is `ENVCONF1`. A format change is a new
   version, never a new number. A fourth key is a new version.
 
 ## EXAMPLES
 
 ```rust
-use environment_contract::{ConfigurationPage, PageBuilder, Refused};
+use environment_contract::{ConfigurationView, PageBuilder, Refused};
 
 let page = PageBuilder::new()
     .time_zone("America/Los_Angeles").unwrap()
@@ -39,8 +42,7 @@ let page = PageBuilder::new()
     .terminal_type("xterm-256color").unwrap()
     .build();
 
-// SAFETY: `page` is a live buffer of exactly `PAGE_CONTENT_BYTES`, alive for this block.
-let read = unsafe { ConfigurationPage::new(page.as_ptr() as u64) };
+let read = ConfigurationView::new(&page);
 assert_eq!(read.time_zone(), Some("America/Los_Angeles"));
 assert_eq!(read.locale(), Some("en_US.UTF-8"));
 assert_eq!(read.terminal_type(), Some("xterm-256color"));
@@ -65,16 +67,22 @@ field.
 
 ## What is proven
 
-One Kani harness in `src/verification.rs` proves that `field_bytes`, which every accessor reads
-through, never panics for any length byte. A length byte past the field reads as absent. The
-harness covers the bound that once panicked: a length byte of 255 on the last field. Its
-falsification patch in `falsifications/` turns it red.
+Two Kani harnesses in `src/verification.rs` prove the reader. Each has a falsification patch in
+`falsifications/` that turns it red.
 
 | Harness | Property | Falsification patch |
 |---|---|---|
-| `verification::field_bytes_never_panics_for_any_length_byte` | a length byte past its field reads as absent and never panics | `verification.field_bytes_never_panics_for_any_length_byte.patch` |
+| `verification::field_bytes_never_panics_for_any_length_byte` | a length byte past its field reads as absent and never panics, including a length byte of 255 on the last field | `verification.field_bytes_never_panics_for_any_length_byte.patch` |
+| `verification::an_accessor_answers_only_the_member_its_field_holds` | for any page at all, an accessor answers `None` or a member of its list, and a member only when the page carries the magic and the field holds exactly that member | `verification.an_accessor_answers_only_the_member_its_field_holds.patch` |
 
-Unit tests and doctests cover the round trip and domain membership, not a proof.
+The reader compares a field's bytes with each member over the member's own length, rather than
+decoding them as UTF-8, so the second harness takes a fully symbolic page. It ran in about six
+minutes and 2.2 gigabytes of memory on a shared 80-core host.
+
+That a built page reads back as the members it was given is a host test,
+`every_member_round_trips_through_the_safe_reader`. The lists are finite, and the test writes and
+reads every member of every list, so it covers every input. A Kani harness over a symbolic member
+did not finish in under seven minutes, and adds nothing the exhaustive test lacks.
 
 ## Building and testing
 
@@ -97,12 +105,13 @@ cargo kani
 ```
 
 A passing run prints warnings that mean nothing, among them `use of an unstable feature` for
-`register_tool`. The answer is the last line, `Complete - 1 successfully verified harnesses, 0
-failures, 1 total.`
+`register_tool`. The answer is the last line, `Complete - 2 successfully verified harnesses, 0
+failures, 2 total.`
 
-### Running the falsification patch
+### Running a falsification patch
 
-Apply the patch, confirm the proof fails, then undo it with the same patch reversed:
+Apply a patch, confirm its proof fails, then undo it with the same patch reversed. For the first
+harness:
 
 ```sh
 patch -p1 --no-backup-if-mismatch < falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch
@@ -110,7 +119,8 @@ cargo kani --harness verification::field_bytes_never_panics_for_any_length_byte 
 patch -R -p1 --no-backup-if-mismatch < falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch
 ```
 
-The failing run prints `VERIFICATION:- FAILED` and `cargo kani` exits 1.
+The other follows the same pattern with its own name. The failing run prints
+`VERIFICATION:- FAILED` and `cargo kani` exits 1.
 
 ## Using it
 
@@ -131,7 +141,6 @@ Weekly fuzzing is off for this crate, because the reader has `unsafe` code in on
 
 ## BUGS
 
-- The only reader is `unsafe`. A safe reader over borrowed bytes is not built yet.
 - The lists are short on purpose. `KNOWN_LOCALES` spells the codeset `UTF-8`, as glibc's `LANG`
   does, while `locale -a` prints `utf8`. Nobody has verified whether `setlocale` treats the two alike.
 
