@@ -332,26 +332,100 @@ fn field_bytes(
     page.get(value_offset..value_offset.checked_add(n)?)
 }
 
-/// Read one length-prefixed field back as a `&str`. `None` where [`field_bytes`] is `None`, or for
-/// bytes that do not decode as UTF-8 (a page [`PageBuilder`] wrote never produces this; a foreign
-/// or corrupt page might, and the honest answer is absence rather than a panic).
-fn read_field(
-    page: &[u8],
+/// The member of `list` that one length-prefixed field holds, or `None` when the page fails the
+/// magic check, when [`field_bytes`] is `None`, or when the field's bytes are not exactly a member.
+/// The answer is the list's own string, so a reader never holds bytes the page supplied, and no
+/// UTF-8 decoding is needed: a member is valid UTF-8, and two strings are equal exactly when their
+/// bytes are.
+fn member_on_page(
+    page: &[u8; PAGE_CONTENT_BYTES],
     length_offset: usize,
     value_offset: usize,
     maximum_bytes: usize,
-) -> Option<&str> {
-    core::str::from_utf8(field_bytes(
-        page,
-        length_offset,
-        value_offset,
-        maximum_bytes,
-    )?)
-    .ok()
+    list: &'static [&'static str],
+) -> Option<&'static str> {
+    if page[MAGIC_OFFSET_BYTES..MAGIC_OFFSET_BYTES + 8] != MAGIC {
+        return None;
+    }
+    let bytes = field_bytes(page, length_offset, value_offset, maximum_bytes)?;
+    list.iter()
+        .copied()
+        .find(|member| member.as_bytes() == bytes)
+}
+
+/// **The inert-configuration page, read from bytes the caller already holds.** The safe reader: a
+/// host program, a test or a reader that has copied the page reads it through this, and never
+/// writes `unsafe`.
+///
+/// # Examples
+///
+/// ```
+/// use environment_contract::{ConfigurationView, PageBuilder};
+///
+/// let page = PageBuilder::new().time_zone("UTC").unwrap().build();
+/// let read = ConfigurationView::new(&page);
+/// assert_eq!(read.time_zone(), Some("UTC"));
+/// assert_eq!(read.locale(), None);
+///
+/// let zeroed = [0u8; environment_contract::PAGE_CONTENT_BYTES];
+/// assert_eq!(ConfigurationView::new(&zeroed).terminal_type(), None);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigurationView<'a> {
+    page: &'a [u8; PAGE_CONTENT_BYTES],
+}
+
+impl<'a> ConfigurationView<'a> {
+    /// Read the page held in `page`.
+    pub const fn new(page: &'a [u8; PAGE_CONTENT_BYTES]) -> Self {
+        ConfigurationView { page }
+    }
+
+    /// `TZ`, or `None` if the page fails the magic check, `TZ` was never declared onto it, or the
+    /// bytes are not a member of [`domain::KNOWN_TIME_ZONES`]. A reader never sees a value outside
+    /// that set, whoever wrote the page.
+    #[doc(alias = "TZ")]
+    pub fn time_zone(&self) -> Option<&'static str> {
+        member_on_page(
+            self.page,
+            TIME_ZONE_LENGTH_OFFSET_BYTES,
+            TIME_ZONE_OFFSET_BYTES,
+            MAXIMUM_TIME_ZONE_BYTES,
+            domain::KNOWN_TIME_ZONES,
+        )
+    }
+
+    /// `LANG`, or `None` for the same reasons [`time_zone`](Self::time_zone) can be `None`, with
+    /// [`domain::KNOWN_LOCALES`] as the set.
+    #[doc(alias = "LANG")]
+    pub fn locale(&self) -> Option<&'static str> {
+        member_on_page(
+            self.page,
+            LOCALE_LENGTH_OFFSET_BYTES,
+            LOCALE_OFFSET_BYTES,
+            MAXIMUM_LOCALE_BYTES,
+            domain::KNOWN_LOCALES,
+        )
+    }
+
+    /// `TERM`, or `None` for the same reasons [`time_zone`](Self::time_zone) can be `None`, with
+    /// [`domain::KNOWN_TERMINAL_TYPES`] as the set.
+    #[doc(alias = "TERM")]
+    pub fn terminal_type(&self) -> Option<&'static str> {
+        member_on_page(
+            self.page,
+            TERMINAL_TYPE_LENGTH_OFFSET_BYTES,
+            TERMINAL_TYPE_OFFSET_BYTES,
+            MAXIMUM_TERMINAL_TYPE_BYTES,
+            domain::KNOWN_TERMINAL_TYPES,
+        )
+    }
 }
 
 /// **The inert-configuration page**, as seen through one process's read-only mapping of it. It
 /// needs no seqlock: the page has exactly one writer, which finishes before it has a second reader.
+/// It reads exactly as [`ConfigurationView`] does; it exists for a reader that holds an address
+/// rather than bytes.
 ///
 /// # Examples
 ///
@@ -401,69 +475,29 @@ impl ConfigurationPage {
         }
     }
 
-    /// # Safety
-    ///
-    /// Upheld by [`new`](Self::new)'s contract: `base` names at least `PAGE_CONTENT_BYTES` mapped,
-    /// stable bytes.
-    fn bytes(&self) -> &[u8] {
-        // SAFETY: `new`'s contract.
-        unsafe { core::slice::from_raw_parts(self.base, PAGE_CONTENT_BYTES) }
+    /// The mapped bytes, read through the safe reader.
+    fn view(&self) -> ConfigurationView<'_> {
+        // SAFETY: `new`'s contract: `base` names at least `PAGE_CONTENT_BYTES` mapped, stable
+        // bytes, and an array of bytes has an alignment of one.
+        ConfigurationView::new(unsafe { &*self.base.cast::<[u8; PAGE_CONTENT_BYTES]>() })
     }
 
-    fn is_recognized(&self) -> bool {
-        self.bytes()[MAGIC_OFFSET_BYTES..MAGIC_OFFSET_BYTES + 8] == MAGIC
-    }
-
-    /// `TZ`, or `None` if this process holds no config page, the page fails the magic check, `TZ` was
-    /// never declared onto it, or the bytes are not a member of [`domain::KNOWN_TIME_ZONES`]. A
-    /// reader never sees a value outside that set, whoever wrote the page.
+    /// `TZ`, as [`ConfigurationView::time_zone`] reads it.
     #[doc(alias = "TZ")]
-    pub fn time_zone(&self) -> Option<&str> {
-        self.is_recognized()
-            .then(|| {
-                read_field(
-                    self.bytes(),
-                    TIME_ZONE_LENGTH_OFFSET_BYTES,
-                    TIME_ZONE_OFFSET_BYTES,
-                    MAXIMUM_TIME_ZONE_BYTES,
-                )
-            })
-            .flatten()
-            .filter(|value| domain::is_known_time_zone(value))
+    pub fn time_zone(&self) -> Option<&'static str> {
+        self.view().time_zone()
     }
 
-    /// `LANG`, or `None` for the same reasons [`time_zone`](Self::time_zone) can be `None`, with
-    /// [`domain::KNOWN_LOCALES`] as the set.
+    /// `LANG`, as [`ConfigurationView::locale`] reads it.
     #[doc(alias = "LANG")]
-    pub fn locale(&self) -> Option<&str> {
-        self.is_recognized()
-            .then(|| {
-                read_field(
-                    self.bytes(),
-                    LOCALE_LENGTH_OFFSET_BYTES,
-                    LOCALE_OFFSET_BYTES,
-                    MAXIMUM_LOCALE_BYTES,
-                )
-            })
-            .flatten()
-            .filter(|value| domain::is_known_locale(value))
+    pub fn locale(&self) -> Option<&'static str> {
+        self.view().locale()
     }
 
-    /// `TERM`, or `None` for the same reasons [`time_zone`](Self::time_zone) can be `None`, with
-    /// [`domain::KNOWN_TERMINAL_TYPES`] as the set.
+    /// `TERM`, as [`ConfigurationView::terminal_type`] reads it.
     #[doc(alias = "TERM")]
-    pub fn terminal_type(&self) -> Option<&str> {
-        self.is_recognized()
-            .then(|| {
-                read_field(
-                    self.bytes(),
-                    TERMINAL_TYPE_LENGTH_OFFSET_BYTES,
-                    TERMINAL_TYPE_OFFSET_BYTES,
-                    MAXIMUM_TERMINAL_TYPE_BYTES,
-                )
-            })
-            .flatten()
-            .filter(|value| domain::is_known_terminal_type(value))
+    pub fn terminal_type(&self) -> Option<&'static str> {
+        self.view().terminal_type()
     }
 }
 
@@ -488,14 +522,56 @@ mod tests {
 
     /// `buffer` read as a mapped [`ConfigurationPage`] for the length of `f`, and the one place these tests
     /// argue `ConfigurationPage::new`'s contract. `f` borrows the page by reference; a test that copied it
-    /// out would break the argument, and none does.
+    /// out would break the argument, and none does. Every test that reads a page through this also
+    /// checks that [`ConfigurationView`] reads the same bytes the same way.
     fn with_page<R>(
         buffer: &[u8; PAGE_CONTENT_BYTES],
         f: impl FnOnce(&ConfigurationPage) -> R,
     ) -> R {
         // SAFETY: `buffer` is live, sized and aligned for the page by its type, and borrowed for
         // the whole call, so it outlives every use of the page inside `f`.
-        f(&unsafe { ConfigurationPage::new(buffer.as_ptr() as u64) })
+        let page = unsafe { ConfigurationPage::new(buffer.as_ptr() as u64) };
+        let view = ConfigurationView::new(buffer);
+        assert_eq!(page.time_zone(), view.time_zone());
+        assert_eq!(page.locale(), view.locale());
+        assert_eq!(page.terminal_type(), view.terminal_type());
+        f(&page)
+    }
+
+    /// Every member of every list round-trips through a built page, read by the safe reader, and
+    /// the answer is the list's own string.
+    #[test]
+    fn every_member_round_trips_through_the_safe_reader() {
+        for &time_zone in domain::KNOWN_TIME_ZONES {
+            let page = PageBuilder::new().time_zone(time_zone).unwrap().build();
+            let read = ConfigurationView::new(&page).time_zone().unwrap();
+            assert_eq!(read, time_zone);
+        }
+        for &locale in domain::KNOWN_LOCALES {
+            let page = PageBuilder::new().locale(locale).unwrap().build();
+            assert_eq!(ConfigurationView::new(&page).locale(), Some(locale));
+        }
+        for &terminal_type in domain::KNOWN_TERMINAL_TYPES {
+            let page = PageBuilder::new()
+                .terminal_type(terminal_type)
+                .unwrap()
+                .build();
+            assert_eq!(
+                ConfigurationView::new(&page).terminal_type(),
+                Some(terminal_type)
+            );
+        }
+    }
+
+    /// The reader answers the list's own string, not bytes borrowed from the page, so the answer
+    /// outlives the page it was read from.
+    #[test]
+    fn an_answer_outlives_its_page() {
+        let read = {
+            let page = PageBuilder::new().locale("POSIX").unwrap().build();
+            ConfigurationView::new(&page).locale()
+        };
+        assert_eq!(read, Some("POSIX"));
     }
 
     /// Every curated domain member fits under its field's maximum. The `const` assertion above
@@ -807,7 +883,7 @@ mod tests {
     }
 
     /// The layout constants are self-consistent (no overlap, no gap that would misalign a field
-    /// against what `write_field`/`read_field` compute), pinned so a mutant swapping an offset
+    /// against what `write_field`/`field_bytes` compute), pinned so a mutant swapping an offset
     /// fails a test here rather than costing a torn read on real hardware. Asserting on constants is
     /// this test's entire purpose, so the lint that flags a constant assertion as pointless is
     /// switched off on purpose here.

@@ -22,16 +22,19 @@ of `TZ`, `LANG` and `TERM` takes one length byte and a fixed field of 40, 24 and
 - Write with `PageBuilder`. Each setter (`time_zone`, `locale`, `terminal_type`) returns
   `Err(Refused)` for a value outside its list. `build` returns the page's bytes. A key never set
   stays zero.
-- Read with `ConfigurationPage`. `ConfigurationPage::new` is `unsafe` because it takes a raw
-  address. Each accessor returns `None` for a zeroed or foreign frame, for a key never set, for a
-  length byte past its field and for a value outside its list. No input makes it panic.
+- Read with `ConfigurationView`, which borrows the page's bytes and is safe. A reader that holds
+  only the address of a mapped page uses `ConfigurationPage`, whose `new` is `unsafe` because it
+  takes a raw address, and which reads exactly as `ConfigurationView` does. Each accessor returns
+  `None` for a zeroed or foreign frame, for a key never set, for a length byte past its field and
+  for a value outside its list. Otherwise it returns the list's own string, never bytes borrowed
+  from the page. No input makes it panic.
 - `INTERFACE_ID` is 13, `VERSION` is 1 and `MAGIC` is `ENVCONF1`. A format change is a new
   version, never a new number. A fourth key is a new version.
 
 ## EXAMPLES
 
 ```rust
-use environment_contract::{ConfigurationPage, PageBuilder, Refused};
+use environment_contract::{ConfigurationView, PageBuilder, Refused};
 
 let page = PageBuilder::new()
     .time_zone("America/Los_Angeles").unwrap()
@@ -39,8 +42,7 @@ let page = PageBuilder::new()
     .terminal_type("xterm-256color").unwrap()
     .build();
 
-// SAFETY: `page` is a live buffer of exactly `PAGE_CONTENT_BYTES`, alive for this block.
-let read = unsafe { ConfigurationPage::new(page.as_ptr() as u64) };
+let read = ConfigurationView::new(&page);
 assert_eq!(read.time_zone(), Some("America/Los_Angeles"));
 assert_eq!(read.locale(), Some("en_US.UTF-8"));
 assert_eq!(read.terminal_type(), Some("xterm-256color"));
@@ -131,7 +133,6 @@ Weekly fuzzing is off for this crate, because the reader has `unsafe` code in on
 
 ## BUGS
 
-- The only reader is `unsafe`. A safe reader over borrowed bytes is not built yet.
 - The lists are short on purpose. `KNOWN_LOCALES` spells the codeset `UTF-8`, as glibc's `LANG`
   does, while `locale -a` prints `utf8`. Nobody has verified whether `setlocale` treats the two alike.
 
