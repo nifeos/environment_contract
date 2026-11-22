@@ -67,16 +67,17 @@ field.
 
 ## What is proven
 
-One Kani harness in `src/verification.rs` proves that `field_bytes`, which every accessor reads
-through, never panics for any length byte. A length byte past the field reads as absent. The
-harness covers the bound that once panicked: a length byte of 255 on the last field. Its
-falsification patch in `falsifications/` turns it red.
+Three Kani harnesses in `src/verification.rs` prove the reader and the builder. Each has a
+falsification patch in `falsifications/` that turns it red.
 
 | Harness | Property | Falsification patch |
 |---|---|---|
-| `verification::field_bytes_never_panics_for_any_length_byte` | a length byte past its field reads as absent and never panics | `verification.field_bytes_never_panics_for_any_length_byte.patch` |
+| `verification::field_bytes_never_panics_for_any_length_byte` | a length byte past its field reads as absent and never panics, including a length byte of 255 on the last field | `verification.field_bytes_never_panics_for_any_length_byte.patch` |
+| `verification::any_members_round_trip` | for any one member of each list, the built page reads back as those three members | `verification.any_members_round_trip.patch` |
+| `verification::an_accessor_answers_only_the_member_its_field_holds` | for any page at all, an accessor answers `None` or a member of its list, and a member only when the page carries the magic and the field holds exactly that member | `verification.an_accessor_answers_only_the_member_its_field_holds.patch` |
 
-Unit tests and doctests cover the round trip and domain membership, not a proof.
+The reader matches a field's bytes against the list rather than decoding them as UTF-8, so no
+harness runs a symbolic UTF-8 scan.
 
 ## Building and testing
 
@@ -99,12 +100,13 @@ cargo kani
 ```
 
 A passing run prints warnings that mean nothing, among them `use of an unstable feature` for
-`register_tool`. The answer is the last line, `Complete - 1 successfully verified harnesses, 0
-failures, 1 total.`
+`register_tool`. The answer is the last line, `Complete - 3 successfully verified harnesses, 0
+failures, 3 total.`
 
-### Running the falsification patch
+### Running a falsification patch
 
-Apply the patch, confirm the proof fails, then undo it with the same patch reversed:
+Apply a patch, confirm its proof fails, then undo it with the same patch reversed. For the first
+harness:
 
 ```sh
 patch -p1 --no-backup-if-mismatch < falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch
@@ -112,7 +114,8 @@ cargo kani --harness verification::field_bytes_never_panics_for_any_length_byte 
 patch -R -p1 --no-backup-if-mismatch < falsifications/verification.field_bytes_never_panics_for_any_length_byte.patch
 ```
 
-The failing run prints `VERIFICATION:- FAILED` and `cargo kani` exits 1.
+The other two follow the same pattern with their own names. The failing run prints
+`VERIFICATION:- FAILED` and `cargo kani` exits 1.
 
 ## Using it
 

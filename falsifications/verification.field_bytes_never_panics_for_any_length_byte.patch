@@ -4,12 +4,13 @@ The defect: `field_bytes` trusts the length byte and no longer compares it with 
 length of 255 in `TERM` slices past the end of the page.
 
 Expected to fail: the slice's index-out-of-bounds check inside `field_bytes`, at any length over the
-maximum of 24, and the harness's `assert!(read.is_none())` for the same lengths.
+maximum of 32, and the harness's `assert!(read.is_none())` for the same lengths.
 
 diff --git a/src/lib.rs b/src/lib.rs
+index fd31da7..874cb53 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -326,10 +326,10 @@
+@@ -326,10 +326,10 @@ fn field_bytes(
      maximum_bytes: usize,
  ) -> Option<&[u8]> {
      let n = *page.get(length_offset)? as usize;
@@ -21,4 +22,4 @@ diff --git a/src/lib.rs b/src/lib.rs
 +    Some(&page[value_offset..value_offset + n])
  }
  
- /// Read one length-prefixed field back as a `&str`. `None` where [`field_bytes`] is `None`, or for
+ /// The member of `list` that one length-prefixed field holds, or `None` when the page fails the
