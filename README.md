@@ -1,9 +1,9 @@
 # environment_contract
 
-[![check](https://github.com/nifeos/environment_contract/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nifeos/environment_contract/actions/workflows/ci.yml?query=branch%3Amain)
-[![proofs](https://github.com/nifeos/environment_contract/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/nifeos/environment_contract/actions/workflows/proofs.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](https://github.com/nifeos/environment_contract#license)
-[![minimum Rust version](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://github.com/nifeos/environment_contract/blob/main/Cargo.toml)
+[![check](https://github.com/partsfoundry/environment_contract/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/partsfoundry/environment_contract/actions/workflows/ci.yml?query=branch%3Amain)
+[![proofs](https://github.com/partsfoundry/environment_contract/actions/workflows/proofs.yml/badge.svg?branch=main)](https://github.com/partsfoundry/environment_contract/actions/workflows/proofs.yml?query=branch%3Amain)
+[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](https://github.com/partsfoundry/environment_contract#license)
+[![minimum Rust version](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://github.com/partsfoundry/environment_contract/blob/main/Cargo.toml)
 
 The read-only page that carries a process's time zone, locale and terminal type, and the rules for
 writing and reading it. `no_std`, no dependencies, no system calls. The program that starts a
@@ -129,7 +129,7 @@ Depend on it by git, pinned to a commit of this repository's `main` and never to
 
 ```toml
 [dependencies]
-environment_contract = { git = "https://github.com/nifeos/environment_contract", rev = "<full commit hash>" }
+environment_contract = { git = "https://github.com/partsfoundry/environment_contract", rev = "<full commit hash>" }
 ```
 
 Once a pre-release tag exists, use `tag = "<that tag>"` in place of `rev`.
